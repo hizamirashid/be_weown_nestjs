@@ -59,39 +59,55 @@ export class CallService {
             this.appConfigService.getConfig(),
             this.isThereRoomMemberAndNotBanedOrThrow(dto.roomId, dto.myUser._id)
         ]);
-        if (rM.pId == null) throw new NotFoundException("pId is null this may be not Direct room!")
+        if (rM.pId == null) {
+            // this might be a live session
+            // throw new NotFoundException("pId is null this may be not Direct room!")
 
-        if (!vAppConfig.allowCall) throw new BadRequestException(i18nApi.callNotAllowedString)
+            const meetId = newMongoObjId().toString();
+            // let myData = await this.userService.findById(dto.myUser._id, "fullName userImage")
+            // this.socket.io.to(peerId.toString()).emit(SocketEventsType.v1OnNewCall, JSON.stringify({
+            //     meetId: meetId,
+            //     roomId: dto.roomId,
+            //     userData: myData,
+            //     withVideo: dto.withVideo,
+            //     payload: dto.payload,
+            // }));
+            return {meetId: meetId}
+        }
 
-        const [roomActiveCalls, peerActiveCalls] = await Promise.all([
-            this.meetService.findAll({
-                $and: [
-                    callStatuses,
-                    {roomId: dto.roomId}
-                ]
-            }),
-            this.meetService.findAll({
-                $and: [
-                    callStatuses,
-                    {
-                        $or: [
-                            {caller: rM.pId},
-                            {callee: rM.pId}
-                        ]
-                    }
-                ]
-            })
-        ]);
+        else { // (rM.pId != null)
+            if (!vAppConfig.allowCall) throw new BadRequestException(i18nApi.callNotAllowedString)
 
-        if (roomActiveCalls.length != 0) throw new BadRequestException(i18nApi.roomAlreadyInCallString)
-        if (peerActiveCalls.length != 0) throw new BadRequestException(i18nApi.peerUserInCallNowString)
-
-        const meetId = newMongoObjId().toString();
-
-        await this.createCallAndNotify(dto, rM.pId, meetId, vAppConfig.callTimeout);
-        ///we need to create userAccess for agora!
-        //  let userAccess = this.agoraService.getAgoraAccess(meetId, dto.myUser._id, true);
-        return {meetId: meetId}
+            const [roomActiveCalls, peerActiveCalls] = await Promise.all([
+                this.meetService.findAll({
+                    $and: [
+                        callStatuses,
+                        {roomId: dto.roomId}
+                    ]
+                }),
+                this.meetService.findAll({
+                    $and: [
+                        callStatuses,
+                        {
+                            $or: [
+                                {caller: rM.pId},
+                                {callee: rM.pId}
+                            ]
+                        }
+                    ]
+                })
+            ]);
+    
+            if (roomActiveCalls.length != 0) throw new BadRequestException(i18nApi.roomAlreadyInCallString)
+            if (peerActiveCalls.length != 0) throw new BadRequestException(i18nApi.peerUserInCallNowString)
+    
+            const meetId = newMongoObjId().toString();
+    
+            await this.createCallAndNotify(dto, rM.pId, meetId, vAppConfig.callTimeout);
+            ///we need to create userAccess for agora!
+            //  let userAccess = this.agoraService.getAgoraAccess(meetId, dto.myUser._id, true);
+            return {meetId: meetId}
+        }
     }
 
     private async createCallAndNotify(dto: CreateCallMemberDto, peerId: string, meetId: string, callTimeout: number) {
